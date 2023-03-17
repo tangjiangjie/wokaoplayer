@@ -13,6 +13,7 @@ import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.ui.StyledPlayerView;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
+import com.google.exoplayer2.ext.wokaohevc.LibWOKAOHEVCVideoRenderer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -39,6 +40,7 @@ public class video {
     }
 
     public void play(String videoUrl,String firstname) {
+        Log.e("wokao",LibWOKAOHEVCVideoRenderer.test());
         ExoPlayer player = new ExoPlayer.Builder(_act.getApplicationContext(), MediaSource.Factory.UNSUPPORTED)
                 .setRenderersFactory(buildRenderersFactory(_act.getApplicationContext(), true))
                 .build();

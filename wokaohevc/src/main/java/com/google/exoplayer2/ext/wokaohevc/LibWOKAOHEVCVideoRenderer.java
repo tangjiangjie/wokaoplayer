@@ -23,6 +23,7 @@ import com.google.android.exoplayer2.video.VideoRendererEventListener;
 
 public class LibWOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
     private static final String TAG = "LibWOKAOHEVCVideoRenderer";
+
     /**
      * @param allowedJoiningTimeMs     The maximum duration in milliseconds for which this video renderer
      *                                 can attempt to seamlessly join an ongoing playback.
@@ -49,7 +50,7 @@ public class LibWOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
     @SuppressLint("LongLogTag")
     @Override
     protected void setDecoderOutputMode(int outputMode) {
-        Log.d(TAG,"setDecoderOutputMode:"+outputMode);
+        Log.d(TAG, "setDecoderOutputMode:" + outputMode);
 
     }
 
@@ -66,7 +67,7 @@ public class LibWOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
 
     @Override
     public int supportsFormat(Format format) throws ExoPlaybackException {
-        Log.e("wokao q:",format.toString());
+        Log.e("wokao q:", format.toString());
         if (!MimeTypes.VIDEO_H265.equalsIgnoreCase(format.sampleMimeType)
                 || !WOKAOHEVCLibrary.isAvailable()) {
             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE);
@@ -75,6 +76,11 @@ public class LibWOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_DRM);
         }
         return RendererCapabilities.create(
-                C.FORMAT_HANDLED|ADAPTIVE_SEAMLESS);
+                C.FORMAT_HANDLED | ADAPTIVE_SEAMLESS);
     }
+
+    public static String test() {
+        return TAG;
+    }
+
 }
