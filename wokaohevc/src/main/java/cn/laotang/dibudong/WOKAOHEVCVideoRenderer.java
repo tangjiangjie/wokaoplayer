@@ -80,8 +80,8 @@ public class WOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
         if (format.cryptoType != C.CRYPTO_TYPE_NONE) {
             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_DRM);
         }
-        return RendererCapabilities.create(
-                C.FORMAT_HANDLED | ADAPTIVE_SEAMLESS);
+        return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE);
+        //return RendererCapabilities.create(C.FORMAT_HANDLED | ADAPTIVE_SEAMLESS);
     }
 
     public static String test() {

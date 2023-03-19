@@ -39,7 +39,7 @@ public class MainActivity extends AppCompatActivity {
 
         String url="http://10.0.0.104/test.mp4";
         String name="test not hdr";
-        if(false){
+        if(true){
             url="http://10.0.0.104/city.mkv";
             name="city hdr";
         }

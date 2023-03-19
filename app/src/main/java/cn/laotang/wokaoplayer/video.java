@@ -14,10 +14,12 @@ import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
 import com.google.android.exoplayer2.ui.StyledPlayerView;
 import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
-import com.google.exoplayer2.ext.wokaohevc.LibWOKAOHEVCVideoRenderer;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import cn.laotang.dibudong.WOKAOHEVCVideoRenderer;
+import cn.laotang.dibudong.WOKAORenderersFactor;
 
 public class video {
     StyledPlayerView mVideView=null;
@@ -35,14 +37,17 @@ public class video {
             extensionRendererMode = DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER;
         }
 
-        return new DefaultRenderersFactory(context.getApplicationContext())
+        return new WOKAORenderersFactor(context.getApplicationContext())
                 .setExtensionRendererMode(extensionRendererMode)
                 .setEnableDecoderFallback(true);
     }
 
     public void play(String videoUrl,String firstname) {
-        Log.e("wokao",LibWOKAOHEVCVideoRenderer.test());
+        Log.e("wokao", WOKAOHEVCVideoRenderer.test());
         Log.e("wokao m", ExoPlayerLibraryInfo.registeredModules());
+        //Log.e("wokao m", WOKAOHEVCLibrary.isAvailable()+"");
+        Log.e("wokao m", ExoPlayerLibraryInfo.registeredModules());
+
         ExoPlayer player = new ExoPlayer.Builder(_act.getApplicationContext(), MediaSource.Factory.UNSUPPORTED)
                 .setRenderersFactory(buildRenderersFactory(_act.getApplicationContext(), true))
                 .build();
@@ -64,6 +69,7 @@ public class video {
         player.addListener(new wkListener());
         //player.setRepeatMode(REPEAT_MODE_ALL);
         player.play();
+        Log.e("wokao m", ExoPlayerLibraryInfo.registeredModules());
     }
     MediaSource mi2ms(MediaItem ite){
 
@@ -97,6 +103,7 @@ public class video {
 
         public void onPlayerError(PlaybackException error) {
             psetTitle(error.getMessage());
+            Log.e("wokao m", ExoPlayerLibraryInfo.registeredModules());
             Log.d("wokao err:",error.getMessage());
         }
 
