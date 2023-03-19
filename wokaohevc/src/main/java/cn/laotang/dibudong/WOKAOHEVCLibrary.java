@@ -1,4 +1,4 @@
-package com.google.exoplayer2.ext.wokaohevc;
+package cn.laotang.dibudong;
 import com.google.android.exoplayer2.ExoPlayerLibraryInfo;
 import com.google.android.exoplayer2.util.LibraryLoader;
 public class WOKAOHEVCLibrary {
@@ -8,7 +8,7 @@ public class WOKAOHEVCLibrary {
         //System.loadLibrary("wokaohevc");
     }
     static {
-        ExoPlayerLibraryInfo.registerModule("goog.exo.WOKAOHEVC");
+        ExoPlayerLibraryInfo.registerModule("goog.exo.wokaohevc");
     }
     public static boolean isAvailable() {
         return true;
@@ -18,5 +18,8 @@ public class WOKAOHEVCLibrary {
      * A native method that is implemented by the 'wokaohevc' native library,
      * which is packaged with this application.
      */
-    public native String stringFromJNI();
+    public String stringFromJNI()
+    {
+        return "1234";
+    }
 }

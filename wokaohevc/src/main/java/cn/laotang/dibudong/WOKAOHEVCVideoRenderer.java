@@ -1,4 +1,4 @@
-package com.google.exoplayer2.ext.wokaohevc;
+package cn.laotang.dibudong;
 
 import android.annotation.SuppressLint;
 import android.os.Handler;
@@ -21,7 +21,10 @@ import com.google.android.exoplayer2.util.MimeTypes;
 import com.google.android.exoplayer2.video.DecoderVideoRenderer;
 import com.google.android.exoplayer2.video.VideoRendererEventListener;
 
-public class LibWOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
+
+
+//MediaCodecVideoRenderer
+public class WOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
     private static final String TAG = "LibWOKAOHEVCVideoRenderer";
 
     /**
@@ -33,8 +36,10 @@ public class LibWOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
      * @param maxDroppedFramesToNotify The maximum number of frames that can be dropped between
      *                                 invocations of {@link VideoRendererEventListener#onDroppedFrames(int, long)}.
      */
-    protected LibWOKAOHEVCVideoRenderer(long allowedJoiningTimeMs, @Nullable Handler eventHandler, @Nullable VideoRendererEventListener eventListener, int maxDroppedFramesToNotify) {
+    protected WOKAOHEVCVideoRenderer(long allowedJoiningTimeMs, @Nullable Handler eventHandler, @Nullable VideoRendererEventListener eventListener, int maxDroppedFramesToNotify) {
         super(allowedJoiningTimeMs, eventHandler, eventListener, maxDroppedFramesToNotify);
+        Log.d("wokaor", "LibWOKAOHEVCVideoRenderer:" );
+
     }
 
     @Override

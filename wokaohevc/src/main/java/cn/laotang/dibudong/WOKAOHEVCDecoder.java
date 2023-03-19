@@ -1,4 +1,6 @@
-package com.google.exoplayer2.ext.wokaohevc;
+package cn.laotang.dibudong;
+
+import android.util.Log;
 
 import androidx.annotation.Nullable;
 
@@ -13,7 +15,7 @@ public class WOKAOHEVCDecoder extends SimpleDecoder<DecoderInputBuffer, VideoDec
      */
     protected WOKAOHEVCDecoder(DecoderInputBuffer[] inputBuffers, VideoDecoderOutputBuffer[] outputBuffers) {
         super(inputBuffers, outputBuffers);
-
+        Log.d("wokaor", "WOKAOHEVCDecoder:" );
         //todo create decode handle
     }
 
@@ -21,6 +23,7 @@ public class WOKAOHEVCDecoder extends SimpleDecoder<DecoderInputBuffer, VideoDec
     @Override
     protected WOKAOHEVCDecoderException decode(DecoderInputBuffer inputBuffer, VideoDecoderOutputBuffer outputBuffer, boolean reset) {
         //todo decode video
+        Log.d("wokaor", "WOKAOHEVCDecoder:" );
         return null;
     }
 

@@ -19,3 +19,12 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+
+# Some members of this class are being accessed from native methods. Keep them unobfuscated.
+-keep class com.google.android.exoplayer2.decoder.VideoDecoderOutputBuffer {
+  *;
+}
