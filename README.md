@@ -2,6 +2,8 @@
 parallel hevc 10bit hdr decoding use cpu and gpu 
 ## create simple player project
 
+rename decode to dibudong 
+嘀鳪懂
 ## todo add exoplayer ext module
 
 ## todo add openhevc to exoplayer ext module
