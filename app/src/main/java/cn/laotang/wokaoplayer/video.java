@@ -5,6 +5,7 @@ import android.util.Log;
 
 import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.ExoPlayer;
+import com.google.android.exoplayer2.ExoPlayerLibraryInfo;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
 import com.google.android.exoplayer2.Player;
@@ -41,6 +42,7 @@ public class video {
 
     public void play(String videoUrl,String firstname) {
         Log.e("wokao",LibWOKAOHEVCVideoRenderer.test());
+        Log.e("wokao m", ExoPlayerLibraryInfo.registeredModules());
         ExoPlayer player = new ExoPlayer.Builder(_act.getApplicationContext(), MediaSource.Factory.UNSUPPORTED)
                 .setRenderersFactory(buildRenderersFactory(_act.getApplicationContext(), true))
                 .build();
