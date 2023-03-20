@@ -8,7 +8,7 @@ public class WOKAOHEVCLibrary {
         //System.loadLibrary("wokaohevc");
     }
     static {
-        ExoPlayerLibraryInfo.registerModule("goog.exo.wokaohevc");
+        ExoPlayerLibraryInfo.registerModule("cn.laotang.wokaohevc");
     }
     public static boolean isAvailable() {
         return true;
