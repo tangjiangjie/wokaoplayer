@@ -55,8 +55,7 @@ typedef struct Info {
 
 static Info info;
 
-static int pic_width = -1;
-static int pic_height = -1;
+
 
 static int temporal_layer_id = 0;
 static int quality_layer_id = 0;
@@ -528,7 +527,7 @@ void saveFrame(JNIEnv* env, jstring jStr, OpenHevc_Frame& hevcFrame) {
     int res = stat(path, &st);
     if(0 == res && (st.st_mode & S_IFDIR)) {
         char outFilePath[512];
-        sprintf(outFilePath, "%s/video_%dx%d.yuv", path, pic_width, pic_height);
+        sprintf(outFilePath, "%s/video_%dx%d.yuv", path, hevcFrame.frameInfo.nWidth, hevcFrame.frameInfo.nHeight);
         outFile = fopen(outFilePath, "ab+");
         ALOGV("save yuv to %s", outFilePath);
 
@@ -553,6 +552,13 @@ void saveFrame(JNIEnv* env, jstring jStr, OpenHevc_Frame& hevcFrame) {
     } else {
         ALOGW("WARN: %s is not a valid dir", path);
     }
+}
+void dbgframeinfo(OpenHevc_FrameInfo f)
+{
+
+    ALOGE("frame wxh= %d x %d fmt=%d", f.nWidth,f.nHeight,f.chromat_format);
+    ALOGE("frame nBitDepth %d ", f.nBitDepth);
+    ALOGE("frame frameRate %d %d", f.frameRate.den,f.frameRate.num);
 }
 
 DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t pts,
@@ -585,6 +591,7 @@ DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t
         ALOGE("ERROR: %s failed getoutput", __func__);
         return DECODE_GET_FRAME_ERROR; // indicate error
     }
+    dbgframeinfo(hevcFrame.frameInfo);
 
     //设置OutputBuffer的pts
     env->SetLongField(jOutputBuffer, timeUsField, hevcFrame.frameInfo.pts);

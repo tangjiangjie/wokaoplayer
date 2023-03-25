@@ -1,13 +1,18 @@
 package cn.laotang.wokaoplayer;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
+import android.Manifest;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.util.Log;
 import android.view.WindowManager;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.ExoPlayer;
@@ -27,12 +32,30 @@ public class MainActivity extends AppCompatActivity {
     video v=null;
     TextView mTextView=null;
     private PowerManager.WakeLock mWakeLock = null;
+//    public void requestPermission() {
+//        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED ||
+//                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+//
+//            Toast.makeText(this, "申请权限", Toast.LENGTH_SHORT).show();
+//
+//
+//            ActivityCompat.requestPermissions(this, new String[]{
+//                    Manifest.permission.WRITE_EXTERNAL_STORAGE,
+//
+//                    Manifest.permission.READ_EXTERNAL_STORAGE}, 100);
+//        }
+//    }
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON, WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         acquireWakeLock();
+        String localpath=this.getFilesDir().getAbsolutePath();
+        //Log.e("path",localpath);
+//        requestPermission();
 
         mTextView=(TextView)findViewById(R.id.videomsg);
         v=new video(this,(StyledPlayerView) findViewById(R.id.video_view));

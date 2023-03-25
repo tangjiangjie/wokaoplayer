@@ -39,7 +39,7 @@
 
 #endif
 
-#define OSK_LOG_TAG "OskHvc"
+#define OSK_LOG_TAG "DÍBÚDÒNG"
 
 #define VLOGV(...)  VLOG(OSK_LOG_VERBOSE,   OSK_LOG_TAG, __VA_ARGS__)
 #define VLOGD(...)  VLOG(OSK_LOG_DEBUG,     OSK_LOG_TAG, __VA_ARGS__)

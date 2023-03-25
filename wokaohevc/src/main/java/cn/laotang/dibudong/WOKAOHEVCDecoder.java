@@ -86,8 +86,10 @@ public class WOKAOHEVCDecoder extends SimpleDecoder<DecoderInputBuffer, VideoDec
         ByteBuffer inputData = inputBuffer.data;
         int inputSize = inputData.limit();
 
+        String out="/data/data/cn.laotang.wokaoplayer/files";
+        out=null;
         final long result = hevcDecode(d, inputData, inputSize, inputBuffer.timeUs,
-                outputBuffer, outputMode, reset, null);
+                outputBuffer, outputMode, reset,out );
 
         if (result == DECODE_ONLY) {
             outputBuffer.addFlag(C.BUFFER_FLAG_DECODE_ONLY);
