@@ -213,7 +213,7 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH)/include
 
 LOCAL_CPPFLAGS += -frtti -fexceptions -DANDROID -std=c++11
 
-LOCAL_MODULE := wokaohevcdecocer
+LOCAL_MODULE := wokaohevcdecoder
 LOCAL_STATIC_LIBRARIES := openhevcwrapper cpufeatures yuv
 
 

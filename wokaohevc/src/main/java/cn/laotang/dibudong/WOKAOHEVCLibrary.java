@@ -5,13 +5,18 @@ public class WOKAOHEVCLibrary {
 
     // Used to load the 'wokaohevc' library on application startup.
     private static final LibraryLoader LOADER =
-            new LibraryLoader("wokaohevcdecocer") {
+            new LibraryLoader("wokaohevcdecoder") {
                 @Override
                 protected void loadLibrary(String name) {
                     System.loadLibrary(name);
                 }
             };
+
+
+
+
     static {
+        System.loadLibrary("wokaohevcdecoder");
         ExoPlayerLibraryInfo.registerModule("cn.laotang.wokaohevc");
     }
     public static boolean isAvailable() {

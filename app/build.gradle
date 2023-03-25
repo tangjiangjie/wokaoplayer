@@ -37,7 +37,7 @@ dependencies {
     //for audio decode
     // https://mvnrepository.com/artifact/org.jellyfin.exoplayer/exoplayer-ffmpeg-extension
     implementation group: 'org.jellyfin.exoplayer', name: 'exoplayer-ffmpeg-extension', version: '2.18.2+1'
-    implementation files('../wokaohevc/build/outputs/aar/wokaohevc-release.aar')
+    implementation files('./wokaohevc-release.aar')
 
     //implementation fileTree(dir: '../wokaohevc/build/outputs/aar', include: ['*.aar', '*.jar'], exclude: [])
 

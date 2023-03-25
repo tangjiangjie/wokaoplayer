@@ -44,6 +44,9 @@ public class video {
     }
 
     public void play(String videoUrl,String firstname) {
+
+        //no implementation found for java.lang.String cn.laotang.dibudong.WOKAOHEVCLibrary.hevcGetVersion() (tried Java_cn_laotang_dibudong_WOKAOHEVCLibrary_hevcGetVersion and Java_cn_laotang_dibudong_WOKAOHEVCLibrary_hevcGetVersion__)
+        //                                                                                                    	at cn.laotang.dibudong.WOKAOHEVCLibrary.hevcGetVersion(Native Method)
         Log.e("wokao jni", WOKAOHEVCLibrary.hevcGetVersion());
         Log.e("wokao", WOKAOHEVCVideoRenderer.test());
         Log.e("wokao m", ExoPlayerLibraryInfo.registeredModules());
