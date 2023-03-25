@@ -61,7 +61,7 @@ public class WOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
     @Override
     protected Decoder<DecoderInputBuffer, ? extends VideoDecoderOutputBuffer, ? extends DecoderException> createDecoder(Format format, @Nullable CryptoConfig cryptoConfig) throws DecoderException {
         TraceUtil.beginSection("createWOKAOHEVCDecoder");
-        this.d=new WOKAOHEVCDecoder(new DecoderInputBuffer[numInputBuffers], new VideoDecoderOutputBuffer[numOutputBuffers]);
+        this.d=new WOKAOHEVCDecoder(new DecoderInputBuffer[numInputBuffers], new VideoDecoderOutputBuffer[numOutputBuffers],format);
         TraceUtil.endSection();
         return this.d;
     }
@@ -97,15 +97,18 @@ public class WOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
     @Override
     public int supportsFormat(Format format) throws ExoPlaybackException {
         Log.e("wokao q:", format.toString());
+        Log.e("wokao q sampleMimeType:", format.sampleMimeType);
+
         if (!MimeTypes.VIDEO_H265.equalsIgnoreCase(format.sampleMimeType)
                 || !WOKAOHEVCLibrary.isAvailable()) {
             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE);
         }
+        Log.e("wokao q cryptoType:", ""+format.cryptoType);
         if (format.cryptoType != C.CRYPTO_TYPE_NONE) {
             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_DRM);
         }
-        return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE);
-        //return RendererCapabilities.create(C.FORMAT_HANDLED | ADAPTIVE_SEAMLESS);
+        //return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE);
+        return RendererCapabilities.create(C.FORMAT_HANDLED | ADAPTIVE_SEAMLESS);
     }
 
     public static String test() {

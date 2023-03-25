@@ -607,3 +607,83 @@ DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t
     }
     return got_pic;
 }
+
+DECODER_FUNC(jint, hevcRenderFrame, jlong jContext, jobject jSurface,
+             jobject jOutputBuffer) {
+
+    OpenHevc_Handle context = (OpenHevc_Handle) jContext;
+    /*
+    const int buffer_id =
+            env->GetIntField(jOutputBuffer, context->decoder_private_field);
+    JniFrameBuffer* const jni_buffer =
+            context->buffer_manager.GetBuffer(buffer_id);
+
+    if (!context->MaybeAcquireNativeWindow(env, jSurface)) {
+        return kStatusError;
+    }
+
+    if (context->native_window_width != jni_buffer->DisplayedWidth(kPlaneY) ||
+        context->native_window_height != jni_buffer->DisplayedHeight(kPlaneY)) {
+        if (ANativeWindow_setBuffersGeometry(
+                context->native_window, jni_buffer->DisplayedWidth(kPlaneY),
+                jni_buffer->DisplayedHeight(kPlaneY), kImageFormatYV12)) {
+            context->jni_status_code = kJniStatusANativeWindowError;
+            return kStatusError;
+        }
+        context->native_window_width = jni_buffer->DisplayedWidth(kPlaneY);
+        context->native_window_height = jni_buffer->DisplayedHeight(kPlaneY);
+    }
+
+    ANativeWindow_Buffer native_window_buffer;
+    if (ANativeWindow_lock(context->native_window, &native_window_buffer,
+            nullptr) ||
+        native_window_buffer.bits == nullptr) {
+        context->jni_status_code = kJniStatusANativeWindowError;
+        return kStatusError;
+    }
+
+    // Y plane
+    CopyPlane(jni_buffer->Plane(kPlaneY), jni_buffer->Stride(kPlaneY),
+              reinterpret_cast<uint8_t*>(native_window_buffer.bits),
+              native_window_buffer.stride, jni_buffer->DisplayedWidth(kPlaneY),
+              jni_buffer->DisplayedHeight(kPlaneY));
+
+    const int y_plane_size =
+            native_window_buffer.stride * native_window_buffer.height;
+    const int32_t native_window_buffer_uv_height =
+            (native_window_buffer.height + 1) / 2;
+    const int native_window_buffer_uv_stride =
+            AlignTo16(native_window_buffer.stride / 2);
+
+    // TODO(b/140606738): Handle monochrome videos.
+
+    // V plane
+    // Since the format for ANativeWindow is YV12, V plane is being processed
+    // before U plane.
+    const int v_plane_height = std::min(native_window_buffer_uv_height,
+                                        jni_buffer->DisplayedHeight(kPlaneV));
+    CopyPlane(
+            jni_buffer->Plane(kPlaneV), jni_buffer->Stride(kPlaneV),
+            reinterpret_cast<uint8_t*>(native_window_buffer.bits) + y_plane_size,
+            native_window_buffer_uv_stride, jni_buffer->DisplayedWidth(kPlaneV),
+            v_plane_height);
+
+    const int v_plane_size = v_plane_height * native_window_buffer_uv_stride;
+
+    // U plane
+    CopyPlane(jni_buffer->Plane(kPlaneU), jni_buffer->Stride(kPlaneU),
+              reinterpret_cast<uint8_t*>(native_window_buffer.bits) +
+              y_plane_size + v_plane_size,
+              native_window_buffer_uv_stride, jni_buffer->DisplayedWidth(kPlaneU),
+              std::min(native_window_buffer_uv_height,
+                       jni_buffer->DisplayedHeight(kPlaneU)));
+
+    if (ANativeWindow_unlockAndPost(context->native_window)) {
+        context->jni_status_code = kJniStatusANativeWindowError;
+        return kStatusError;
+    }
+
+    return kStatusOk;
+    */
+    return 0;
+}
