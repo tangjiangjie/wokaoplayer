@@ -18,6 +18,7 @@ import com.google.android.exoplayer2.upstream.DefaultHttpDataSource;
 import java.util.HashMap;
 import java.util.Map;
 
+import cn.laotang.dibudong.WOKAOHEVCLibrary;
 import cn.laotang.dibudong.WOKAOHEVCVideoRenderer;
 import cn.laotang.dibudong.WOKAORenderersFactor;
 
@@ -43,6 +44,7 @@ public class video {
     }
 
     public void play(String videoUrl,String firstname) {
+        Log.e("wokao jni", WOKAOHEVCLibrary.hevcGetVersion());
         Log.e("wokao", WOKAOHEVCVideoRenderer.test());
         Log.e("wokao m", ExoPlayerLibraryInfo.registeredModules());
         //Log.e("wokao m", WOKAOHEVCLibrary.isAvailable()+"");

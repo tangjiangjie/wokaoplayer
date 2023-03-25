@@ -10,6 +10,8 @@ import com.google.android.exoplayer2.decoder.DecoderInputBuffer;
 import com.google.android.exoplayer2.decoder.SimpleDecoder;
 import com.google.android.exoplayer2.decoder.VideoDecoderOutputBuffer;
 
+import java.nio.ByteBuffer;
+
 public class WOKAOHEVCDecoder extends SimpleDecoder<DecoderInputBuffer, VideoDecoderOutputBuffer, WOKAOHEVCDecoderException> {
     /**
      * @param inputBuffers  An array of nulls that will be used to store references to input buffers.
@@ -80,4 +82,11 @@ public class WOKAOHEVCDecoder extends SimpleDecoder<DecoderInputBuffer, VideoDec
     public String getName() {
         return "WOKAOHEVC";
     }
+    private native long hevcInit(ByteBuffer buffer, int length);
+    private native long hevcClose(long context);
+
+    //VideoDecoderOutputBuffer
+    private native int hevcDecode(long context, ByteBuffer encoded, int length, long pts,
+                                  VideoDecoderOutputBuffer outputBuffer, int outputMode, boolean flush, String outpath);
+
 }
