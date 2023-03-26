@@ -533,19 +533,20 @@ void saveFrame(JNIEnv* env, jstring jStr, OpenHevc_Frame& hevcFrame) {
 
         // write Y
         int format = hevcFrame.frameInfo.chromat_format == YUV420 ? 1 : 0;
+        int pixlen=(hevcFrame.frameInfo.nBitDepth+7)/8;
         for (int h = 0; h < hevcFrame.frameInfo.nHeight; h++) {
             const uint8_t* srcBase1 = hevcFrame.pvY + hevcFrame.frameInfo.nYPitch * h;
-            fwrite(srcBase1, sizeof(uint8_t), hevcFrame.frameInfo.nWidth, outFile);
+            fwrite(srcBase1, pixlen, hevcFrame.frameInfo.nWidth, outFile);
         }
         // write UV
         int uvLineSize = hevcFrame.frameInfo.nWidth >> format;
         for (int h = 0; h < hevcFrame.frameInfo.nHeight / 2; h++) {
             const uint8_t* srcBase2 = hevcFrame.pvU + hevcFrame.frameInfo.nUPitch * h;
-            fwrite(srcBase2, sizeof(uint8_t) , uvLineSize, outFile);
+            fwrite(srcBase2, pixlen , uvLineSize, outFile);
         }
         for (int h = 0; h < hevcFrame.frameInfo.nHeight / 2 ; h++) {
             const uint8_t* srcBase3 = hevcFrame.pvV + hevcFrame.frameInfo.nVPitch * h;
-            fwrite(srcBase3, sizeof(uint8_t) , uvLineSize, outFile);
+            fwrite(srcBase3, pixlen , uvLineSize, outFile);
         }
         fflush(outFile);
         fclose(outFile);
@@ -555,10 +556,28 @@ void saveFrame(JNIEnv* env, jstring jStr, OpenHevc_Frame& hevcFrame) {
 }
 void dbgframeinfo(OpenHevc_FrameInfo f)
 {
+    /*
+    int         nYPitch;
+    int         nUPitch;
+    int         nVPitch;
+    int         nBitDepth;
+    int         nWidth;
+    int         nHeight;
+    int        chromat_format;
+    OpenHevc_Rational  sample_aspect_ratio;
+    OpenHevc_Rational  frameRate;
+    int         display_picture_number;
+    int         flag; //progressive, interlaced, interlaced top field first, interlaced bottom field first.
+    int64_t     nTimeStamp;
+    enum AVColorSpace colorspace;
+    int64_t     pts;
+     */
 
     ALOGE("frame wxh= %d x %d fmt=%d", f.nWidth,f.nHeight,f.chromat_format);
     ALOGE("frame nBitDepth %d ", f.nBitDepth);
     ALOGE("frame frameRate %d %d", f.frameRate.den,f.frameRate.num);
+    ALOGE("frame yuvPitch %d %d %d", f.nYPitch,f.nUPitch,f.nVPitch);
+    ALOGE("frame nTimeStamp %lld %lld", f.nTimeStamp,f.pts);
 }
 
 DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t pts,
