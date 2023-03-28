@@ -7,12 +7,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <sys/stat.h>
+#include <sys/stat.h>.
+#include <pthread.h>
 
 #include "libyuv.h"
 #include "log.h"
 
 #include "openhevcwrapper/openHevcWrapper.h"
+#include <android/native_window.h>
+#include <android/native_window_jni.h>
 //Java_cn_laotang_dibudong_WOKAOHEVCDecoder_hevcInit
 
 #define DECODER_FUNC(RETURN_TYPE, NAME, ...) \
@@ -313,9 +316,93 @@ static jmethodID initForYuvFrame;
 static jfieldID dataField;
 static jfieldID timeUsField;
 
+
+struct dbdframe{
+    OpenHevc_Frame f;
+    int id;
+};
+
+struct dibudong {
+    jfieldID decoder_private_field;
+    dibudong(OpenHevc_Handle d):decoder(d) {
+        buf_init();
+    }
+    ~dibudong() {
+        if (native_window) {
+            ANativeWindow_release(native_window);
+        }
+        buf_deinit();
+    }
+    void acquire_native_window(JNIEnv* env, jobject new_surface) {
+        if (surface != new_surface) {
+            if (native_window) {
+                ANativeWindow_release(native_window);
+            }
+            native_window = ANativeWindow_fromSurface(env, new_surface);
+            surface = new_surface;
+            width = 0;
+        }
+    }
+    OpenHevc_Handle decoder = NULL;
+    ANativeWindow* native_window = NULL;
+    jobject surface = NULL;
+    int width = 0;
+    int height = 0;
+
+    //buffer manager
+#define MAX_FRAMES      32
+#define FRAME_BASEID    0X100000
+    pthread_mutex_t mutex;
+    void buf_init()
+    {
+        pthread_mutex_init(&mutex, NULL);
+        memset(frame,0,sizeof(frame));
+        bitmap32=0;
+        curidx=0;
+    }
+    void buf_deinit()
+    {
+    }
+    dbdframe* getframe(int id){
+        return &frame[id-FRAME_BASEID];
+    }
+    dbdframe* getframe(){
+        dbdframe* ret=0;
+        pthread_mutex_lock(&mutex);
+        if(bitmap32!=0xffffffff){
+            while(true){
+                if(frame[curidx].id==0){
+                    frame[curidx].id=FRAME_BASEID+curidx;
+                    ret=&frame[curidx];
+                    curidx++;
+                    break;
+                }
+                curidx++;
+                curidx%=MAX_FRAMES;
+            }
+        }
+        pthread_mutex_unlock(&mutex);
+        return ret;
+    }
+    void releaseframe(int id){
+        releaseframe(&frame[id-FRAME_BASEID]);
+    }
+
+    void releaseframe(dbdframe* f){
+        pthread_mutex_lock(&mutex);
+        memset(f,0,sizeof(dbdframe));
+        pthread_mutex_unlock(&mutex);
+    }
+    unsigned int bitmap32;
+    int curidx;
+    dbdframe frame[MAX_FRAMES];
+
+};
+
+
 DECODER_FUNC(jlong, hevcInit, jobject extraData, jint len) {
     OpenHevc_Handle ohevc = nullptr;
-
+    dibudong* ctx=0;
     int mode = 1;
     int nb_pthreads = (android_getCpuCount() + 1) / 2;
     int layer_id = 0;
@@ -350,12 +437,15 @@ DECODER_FUNC(jlong, hevcInit, jobject extraData, jint len) {
     libOpenHevcSetTemporalLayer_id(ohevc, temporal_layer_id);
     libOpenHevcSetActiveDecoders(ohevc, quality_layer_id);
     libOpenHevcSetViewLayers(ohevc, quality_layer_id);
+    ctx=new dibudong(ohevc);
     {
         // Populate JNI References.
         //com.google.android.exoplayer2.decoder
         const jclass outputBufferClass = env->FindClass(
                 "cn/laotang/dibudong/VideoDecoderOutputBufferX");
                 //"com/google/android/exoplayer2/decoder/VideoDecoderOutputBuffer");
+        ctx->decoder_private_field =
+                env->GetFieldID(outputBufferClass, "decoderPrivate", "I");
         initForYuvFrame = env->GetMethodID(outputBufferClass, "initForYuvFrame",
                                            "(IIIII)Z");
         initForRgbFrame = env->GetMethodID(outputBufferClass, "initForRgbFrame",
@@ -366,13 +456,15 @@ DECODER_FUNC(jlong, hevcInit, jobject extraData, jint len) {
     }
 
 LABEL_RETURN:
-    return (jlong) ohevc;
+    return (jlong) ctx;
 }
 
 DECODER_FUNC(jlong, hevcClose, jlong jHandle) {
-    OpenHevc_Handle ohevc = (OpenHevc_Handle) jHandle;
+    dibudong* ctx=(dibudong*)jHandle;
+    OpenHevc_Handle ohevc = ctx->decoder;
     libOpenHevcClose(ohevc);
     ALOGI("total frame decoded %d", info.NbFrame);
+    delete ctx;
     return 0;
 }
 
@@ -583,11 +675,12 @@ void dbgframeinfo(OpenHevc_FrameInfo f)
 
 DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t pts,
              jobject jOutputBuffer, jint outputMode, jint flush, jstring jStr) {
-    OpenHevc_Handle ohevc = (OpenHevc_Handle) jHandle;
+    dibudong* ctx=(dibudong*)jHandle;
+    OpenHevc_Handle ohevc = ctx->decoder;
     const uint8_t *const buffer =
             reinterpret_cast<const uint8_t *>(env->GetDirectBufferAddress(encoded));
     int got_pic;
-    OpenHevc_Frame hevcFrame;
+
 
     //Zero if no frame could be decompressed, otherwise, it is nonzero.
     //-1 indicates error occurred
@@ -603,116 +696,95 @@ DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t
         ALOGD("[%s] decode only frame", __func__);
         return FLAG_DECODE_ONLY;
     }
-
-    memset(&hevcFrame, 0, sizeof(OpenHevc_Frame));
+    dbdframe* dbd=ctx->getframe();
+    memset(&dbd->f, 0, sizeof(OpenHevc_Frame));
     //libOpenHevcGetPictureInfo(ohevc, &hevcFrame.frameInfo);
-    got_pic = libOpenHevcGetOutput(ohevc, 1, &hevcFrame);
+    got_pic = libOpenHevcGetOutput(ohevc, 1, &dbd->f);
     if(got_pic < 0) {
         ALOGE("ERROR: %s failed getoutput", __func__);
+        ctx->releaseframe(dbd);
         return DECODE_GET_FRAME_ERROR; // indicate error
     }
-    dbgframeinfo(hevcFrame.frameInfo);
+    dbgframeinfo(dbd->f.frameInfo);
 
     //设置OutputBuffer的pts
-    env->SetLongField(jOutputBuffer, timeUsField, hevcFrame.frameInfo.pts);
-
-    switch(outputMode) {
-        case OutputMode::RGB:
-            ALOGE("getRGBFrame OutputMode %d",outputMode);
-            got_pic = getRGBFrame(env, jOutputBuffer, hevcFrame);
-            break;
-        case OutputMode::YUV:
-            ALOGE("getYUVFrame OutputMode %d",outputMode);
-            got_pic = getYUVFrame(env, jOutputBuffer, hevcFrame);
-            break;
-        default:
-            ALOGE("ERROR: %s failed, outputMode %d not supported", __func__, outputMode);
-            return DECODE_GET_FRAME_ERROR;
-    }
+    env->SetLongField(jOutputBuffer, timeUsField, dbd->f.frameInfo.pts);
+    env->SetIntField(jOutputBuffer, ctx->decoder_private_field, dbd->id);
+    got_pic = getYUVFrame(env, jOutputBuffer, dbd->f);
 
     //for debug, to save frame to file
     if(jStr != nullptr) {
-       saveFrame(env, jStr, hevcFrame);
+       saveFrame(env, jStr, dbd->f);
     }
     return got_pic;
 }
+// Android YUV format. See:
+// https://developer.android.com/reference/android/graphics/ImageFormat.html#YV12.
+//YV12 is a 4:2:0 YCrCb planar format comprised of a WxH Y plane followed by (W/2) x (H/2) Cr and Cb planes.
+static const int FormatYV12 = 0x32315659;
 
-DECODER_FUNC(jint, hevcRenderFrame, jlong jContext, jobject jSurface,
+DECODER_FUNC(void, hevcReleaseFrame, jlong jHandle, jobject jOutputBuffer) {
+    dibudong* ctx=(dibudong*)jHandle;
+    const int id = env->GetIntField(jOutputBuffer, ctx->decoder_private_field);
+    env->SetIntField(jOutputBuffer, ctx->decoder_private_field, -1);
+    ctx->releaseframe(id);
+}
+
+DECODER_FUNC(jint, hevcRenderFrame, jlong jHandle, jobject jSurface,
              jobject jOutputBuffer) {
+    dibudong* ctx=(dibudong*)jHandle;
+    const int id = env->GetIntField(jOutputBuffer, ctx->decoder_private_field);
+    dbdframe* dbdf=ctx->getframe(id);
 
-    OpenHevc_Handle context = (OpenHevc_Handle) jContext;
-    /*
-    const int buffer_id =
-            env->GetIntField(jOutputBuffer, context->decoder_private_field);
-    JniFrameBuffer* const jni_buffer =
-            context->buffer_manager.GetBuffer(buffer_id);
+    ctx->acquire_native_window(env, jSurface);
 
-    if (!context->MaybeAcquireNativeWindow(env, jSurface)) {
-        return kStatusError;
+    if (ctx->native_window == NULL) {
+        return 1;
     }
 
-    if (context->native_window_width != jni_buffer->DisplayedWidth(kPlaneY) ||
-        context->native_window_height != jni_buffer->DisplayedHeight(kPlaneY)) {
-        if (ANativeWindow_setBuffersGeometry(
-                context->native_window, jni_buffer->DisplayedWidth(kPlaneY),
-                jni_buffer->DisplayedHeight(kPlaneY), kImageFormatYV12)) {
-            context->jni_status_code = kJniStatusANativeWindowError;
-            return kStatusError;
-        }
-        context->native_window_width = jni_buffer->DisplayedWidth(kPlaneY);
-        context->native_window_height = jni_buffer->DisplayedHeight(kPlaneY);
+    if (ctx->width != dbdf->f.frameInfo.nWidth || ctx->height != dbdf->f.frameInfo.nHeight) {
+        ANativeWindow_setBuffersGeometry(ctx->native_window, dbdf->f.frameInfo.nWidth,
+                                         dbdf->f.frameInfo.nHeight, FormatYV12);
+        ctx->width = dbdf->f.frameInfo.nWidth;
+        ctx->height = dbdf->f.frameInfo.nHeight;
     }
 
-    ANativeWindow_Buffer native_window_buffer;
-    if (ANativeWindow_lock(context->native_window, &native_window_buffer,
-            nullptr) ||
-        native_window_buffer.bits == nullptr) {
-        context->jni_status_code = kJniStatusANativeWindowError;
-        return kStatusError;
+    ANativeWindow_Buffer buffer;
+    int result = ANativeWindow_lock(ctx->native_window, &buffer, NULL);
+    if (buffer.bits == NULL || result) {
+        return -1;
     }
-
-    // Y plane
-    CopyPlane(jni_buffer->Plane(kPlaneY), jni_buffer->Stride(kPlaneY),
-              reinterpret_cast<uint8_t*>(native_window_buffer.bits),
-              native_window_buffer.stride, jni_buffer->DisplayedWidth(kPlaneY),
-              jni_buffer->DisplayedHeight(kPlaneY));
-
-    const int y_plane_size =
-            native_window_buffer.stride * native_window_buffer.height;
-    const int32_t native_window_buffer_uv_height =
-            (native_window_buffer.height + 1) / 2;
-    const int native_window_buffer_uv_stride =
-            AlignTo16(native_window_buffer.stride / 2);
-
-    // TODO(b/140606738): Handle monochrome videos.
-
-    // V plane
-    // Since the format for ANativeWindow is YV12, V plane is being processed
-    // before U plane.
-    const int v_plane_height = std::min(native_window_buffer_uv_height,
-                                        jni_buffer->DisplayedHeight(kPlaneV));
-    CopyPlane(
-            jni_buffer->Plane(kPlaneV), jni_buffer->Stride(kPlaneV),
-            reinterpret_cast<uint8_t*>(native_window_buffer.bits) + y_plane_size,
-            native_window_buffer_uv_stride, jni_buffer->DisplayedWidth(kPlaneV),
-            v_plane_height);
-
-    const int v_plane_size = v_plane_height * native_window_buffer_uv_stride;
-
-    // U plane
-    CopyPlane(jni_buffer->Plane(kPlaneU), jni_buffer->Stride(kPlaneU),
-              reinterpret_cast<uint8_t*>(native_window_buffer.bits) +
-              y_plane_size + v_plane_size,
-              native_window_buffer_uv_stride, jni_buffer->DisplayedWidth(kPlaneU),
-              std::min(native_window_buffer_uv_height,
-                       jni_buffer->DisplayedHeight(kPlaneU)));
-
-    if (ANativeWindow_unlockAndPost(context->native_window)) {
-        context->jni_status_code = kJniStatusANativeWindowError;
-        return kStatusError;
+    // Y
+    const size_t src_y_stride = srcBuffer->stride[VPX_PLANE_Y];
+    int stride = dbdf->f.frameInfo.nWidth;
+    const uint8_t* src_base =
+            reinterpret_cast<uint8_t*>(srcBuffer->planes[VPX_PLANE_Y]);
+    uint8_t* dest_base = (uint8_t*)buffer.bits;
+    for (int y = 0; y < dbdf->f.frameInfo.nHeight; y++) {
+        memcpy(dest_base, src_base, stride);
+        src_base += src_y_stride;
+        dest_base += buffer.stride;
     }
-
-    return kStatusOk;
-    */
-    return 0;
+    // UV
+    const int src_uv_stride = srcBuffer->stride[VPX_PLANE_U];
+    const int dest_uv_stride = (buffer.stride / 2 + 15) & (~15);
+    const int32_t buffer_uv_height = (buffer.height + 1) / 2;
+    const int32_t height =
+            std::min((int32_t)(dbdf->f.frameInfo.nHeight + 1) / 2, buffer_uv_height);
+    stride = (dbdf->f.frameInfo.nWidth + 1) / 2;
+    src_base = reinterpret_cast<uint8_t*>(srcBuffer->planes[VPX_PLANE_U]);
+    const uint8_t* src_v_base =
+            reinterpret_cast<uint8_t*>(srcBuffer->planes[VPX_PLANE_V]);
+    uint8_t* dest_v_base =
+            ((uint8_t*)buffer.bits) + buffer.stride * buffer.height;
+    dest_base = dest_v_base + buffer_uv_height * dest_uv_stride;
+    for (int y = 0; y < height; y++) {
+        memcpy(dest_base, src_base, stride);
+        memcpy(dest_v_base, src_v_base, stride);
+        src_base += src_uv_stride;
+        src_v_base += src_uv_stride;
+        dest_base += dest_uv_stride;
+        dest_v_base += dest_uv_stride;
+    }
+    return ANativeWindow_unlockAndPost(ctx->native_window);
 }

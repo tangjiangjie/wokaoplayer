@@ -117,7 +117,7 @@ public class WOKAOHEVCDecoder extends SimpleDecoder<DecoderInputBuffer, VideoDec
         // require a call to vpxReleaseFrame.
         Log.d("wokaor", "releaseOutputBuffer:" );
         if (outputMode == C.VIDEO_OUTPUT_MODE_SURFACE_YUV && !outputBuffer.isDecodeOnly()) {
-           // WOKAOHEVCReleaseFrame(d, outputBuffer);
+            hevcReleaseFrame(d, outputBuffer);
         }
         super.releaseOutputBuffer(outputBuffer);
     }
@@ -140,6 +140,7 @@ public class WOKAOHEVCDecoder extends SimpleDecoder<DecoderInputBuffer, VideoDec
     }
     private native long hevcInit(ByteBuffer buffer, int length);
     private native long hevcClose(long context);
+    private native void hevcReleaseFrame(long context,VideoDecoderOutputBuffer outputBuffer);
     private native long hevcRenderFrame(long context, Surface surface,VideoDecoderOutputBuffer outputBuffer);
 
     //VideoDecoderOutputBuffer
