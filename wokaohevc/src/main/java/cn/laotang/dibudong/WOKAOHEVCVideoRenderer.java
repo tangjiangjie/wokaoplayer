@@ -108,7 +108,8 @@ public class WOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
             return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_DRM);
         }
         //return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE);
-        return RendererCapabilities.create(C.FORMAT_HANDLED | ADAPTIVE_SEAMLESS);
+        //return RendererCapabilities.create(C.FORMAT_HANDLED | ADAPTIVE_SEAMLESS);
+        return RendererCapabilities.create(C.FORMAT_HANDLED );
     }
 
     public static String test() {

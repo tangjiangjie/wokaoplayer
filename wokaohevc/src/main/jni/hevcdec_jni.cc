@@ -377,8 +377,8 @@ DECODER_FUNC(jlong, hevcClose, jlong jHandle) {
 }
 
 int getRGBFrame(JNIEnv* env, jobject jOutputBuffer, OpenHevc_Frame& hevcFrame) {
+    ALOGI("getRGBFrame %d", hevcFrame.frameInfo.chromat_format);
     if (YUV420 == hevcFrame.frameInfo.chromat_format) {
-
         jint bufferSize = env->CallIntMethod(jOutputBuffer, initForRgbFrame,
                                                      hevcFrame.frameInfo.nWidth,
                                                      hevcFrame.frameInfo.nHeight,
@@ -457,6 +457,7 @@ int getRGBFrame(JNIEnv* env, jobject jOutputBuffer, OpenHevc_Frame& hevcFrame) {
 }
 
 int getYUVFrame(JNIEnv* env, jobject jOutputBuffer, OpenHevc_Frame& hevcFrame) {
+    ALOGI("getYUVFrame %d", hevcFrame.frameInfo.chromat_format);
     // yuv
     const int kColorspaceUnknown = 0;
     const int kColorspaceBT601 = 1;
@@ -617,9 +618,11 @@ DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t
 
     switch(outputMode) {
         case OutputMode::RGB:
+            ALOGE("getRGBFrame OutputMode %d",outputMode);
             got_pic = getRGBFrame(env, jOutputBuffer, hevcFrame);
             break;
         case OutputMode::YUV:
+            ALOGE("getYUVFrame OutputMode %d",outputMode);
             got_pic = getYUVFrame(env, jOutputBuffer, hevcFrame);
             break;
         default:

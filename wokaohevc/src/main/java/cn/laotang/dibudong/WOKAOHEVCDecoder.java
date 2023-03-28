@@ -115,6 +115,7 @@ public class WOKAOHEVCDecoder extends SimpleDecoder<DecoderInputBuffer, VideoDec
     protected void releaseOutputBuffer(VideoDecoderOutputBuffer outputBuffer) {
         // Decode only frames do not acquire a reference on the internal decoder buffer and thus do not
         // require a call to vpxReleaseFrame.
+        Log.d("wokaor", "releaseOutputBuffer:" );
         if (outputMode == C.VIDEO_OUTPUT_MODE_SURFACE_YUV && !outputBuffer.isDecodeOnly()) {
            // WOKAOHEVCReleaseFrame(d, outputBuffer);
         }
