@@ -206,7 +206,7 @@ LOCAL_PATH := $(TOP_PATH)
 
 LOCAL_SRC_FILES := hevcdec_jni.cc
 
-LOCAL_LDLIBS := -llog
+LOCAL_LDLIBS := -llog -lz -lm -landroid
 
 LOCAL_C_INCLUDES := $(LOCAL_PATH)
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/include

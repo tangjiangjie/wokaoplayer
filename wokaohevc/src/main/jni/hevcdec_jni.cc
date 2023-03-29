@@ -320,6 +320,7 @@ static jfieldID timeUsField;
 struct dbdframe{
     OpenHevc_Frame f;
     int id;
+    const jbyte* pic;
 };
 
 struct dibudong {
@@ -712,6 +713,10 @@ DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t
     env->SetIntField(jOutputBuffer, ctx->decoder_private_field, dbd->id);
     got_pic = getYUVFrame(env, jOutputBuffer, dbd->f);
 
+    const jobject dataObject = env->GetObjectField(jOutputBuffer, dataField);
+    //jbyte* const data =
+     dbd->pic=reinterpret_cast<jbyte*>(env->GetDirectBufferAddress(dataObject));
+
     //for debug, to save frame to file
     if(jStr != nullptr) {
        saveFrame(env, jStr, dbd->f);
@@ -732,6 +737,7 @@ DECODER_FUNC(void, hevcReleaseFrame, jlong jHandle, jobject jOutputBuffer) {
 
 DECODER_FUNC(jint, hevcRenderFrame, jlong jHandle, jobject jSurface,
              jobject jOutputBuffer) {
+
     dibudong* ctx=(dibudong*)jHandle;
     const int id = env->GetIntField(jOutputBuffer, ctx->decoder_private_field);
     dbdframe* dbdf=ctx->getframe(id);
@@ -754,27 +760,36 @@ DECODER_FUNC(jint, hevcRenderFrame, jlong jHandle, jobject jSurface,
     if (buffer.bits == NULL || result) {
         return -1;
     }
+    const jobject dataObject = env->GetObjectField(jOutputBuffer, dataField);
+    jbyte* const data =reinterpret_cast<jbyte*>(env->GetDirectBufferAddress(dataObject));
+
+    ALOGD("hevcRenderFrame %p %p",data,dbdf->pic);
+
     // Y
-    const size_t src_y_stride = srcBuffer->stride[VPX_PLANE_Y];
+    const size_t src_y_stride = dbdf->f.frameInfo.nYPitch;
     int stride = dbdf->f.frameInfo.nWidth;
     const uint8_t* src_base =
-            reinterpret_cast<uint8_t*>(srcBuffer->planes[VPX_PLANE_Y]);
+            reinterpret_cast<uint8_t*>(data);
     uint8_t* dest_base = (uint8_t*)buffer.bits;
     for (int y = 0; y < dbdf->f.frameInfo.nHeight; y++) {
         memcpy(dest_base, src_base, stride);
         src_base += src_y_stride;
         dest_base += buffer.stride;
     }
+    const int32_t uvHeight = (dbdf->f.frameInfo.nHeight + 1) / 2;
+    const uint64_t yLength = dbdf->f.frameInfo.nYPitch * dbdf->f.frameInfo.nHeight;
+    const uint64_t uvLength = dbdf->f.frameInfo.nUPitch * uvHeight;
+
     // UV
-    const int src_uv_stride = srcBuffer->stride[VPX_PLANE_U];
+    const int src_uv_stride = dbdf->f.frameInfo.nUPitch;
     const int dest_uv_stride = (buffer.stride / 2 + 15) & (~15);
     const int32_t buffer_uv_height = (buffer.height + 1) / 2;
     const int32_t height =
-            std::min((int32_t)(dbdf->f.frameInfo.nHeight + 1) / 2, buffer_uv_height);
+            fmin((int32_t)(dbdf->f.frameInfo.nHeight + 1) / 2, buffer_uv_height);
     stride = (dbdf->f.frameInfo.nWidth + 1) / 2;
-    src_base = reinterpret_cast<uint8_t*>(srcBuffer->planes[VPX_PLANE_U]);
+    src_base = reinterpret_cast<uint8_t*>(data + yLength+uvLength);
     const uint8_t* src_v_base =
-            reinterpret_cast<uint8_t*>(srcBuffer->planes[VPX_PLANE_V]);
+            reinterpret_cast<uint8_t*>(data + yLength);
     uint8_t* dest_v_base =
             ((uint8_t*)buffer.bits) + buffer.stride * buffer.height;
     dest_base = dest_v_base + buffer_uv_height * dest_uv_stride;
@@ -786,5 +801,6 @@ DECODER_FUNC(jint, hevcRenderFrame, jlong jHandle, jobject jSurface,
         dest_base += dest_uv_stride;
         dest_v_base += dest_uv_stride;
     }
+
     return ANativeWindow_unlockAndPost(ctx->native_window);
 }
