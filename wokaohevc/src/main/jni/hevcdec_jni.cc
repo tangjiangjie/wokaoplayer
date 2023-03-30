@@ -597,7 +597,7 @@ int getYUVFrame(JNIEnv* env, jobject jOutputBuffer, OpenHevc_Frame& hevcFrame) {
         // it's not important to optimize the stride at this time.
         int converted = 0;
 #ifdef __ARM_NEON__
-        converted = convert_16_to_8_neon(&hevcFrame, data, uvHeight, yLength, uvLength);
+       // converted = convert_16_to_8_neon(&hevcFrame, data, uvHeight, yLength, uvLength);
 #endif  // __ARM_NEON__
         if (!converted) {
             convert_16_to_8_standard(&hevcFrame, data, uvHeight, yLength, uvLength);
@@ -613,6 +613,42 @@ int getYUVFrame(JNIEnv* env, jobject jOutputBuffer, OpenHevc_Frame& hevcFrame) {
 
     return DECODE_NO_ERROR;
 }
+
+void saveFrame(JNIEnv* env, jbyte* data,OpenHevc_Frame& hevcFrame,uint64_t ylen,uint64_t uvlen) {
+    FILE* outFile = nullptr;
+    const char* path = "/data/data/cn.laotang.wokaoplayer/files";
+    struct stat st;
+    int res = stat(path, &st);
+    if(0 == res && (st.st_mode & S_IFDIR)) {
+        char outFilePath[512];
+        sprintf(outFilePath, "%s/rvideo_%dx%d.yuv", path, hevcFrame.frameInfo.nWidth, hevcFrame.frameInfo.nHeight);
+        outFile = fopen(outFilePath, "ab+");
+        ALOGV("save yuv to %s", outFilePath);
+
+        // write Y
+        int format = hevcFrame.frameInfo.chromat_format == YUV420 ? 1 : 0;
+        int pixlen=1;
+        for (int h = 0; h < hevcFrame.frameInfo.nHeight; h++) {
+            const jbyte* srcBase1 = data + hevcFrame.frameInfo.nYPitch * h;
+            fwrite(srcBase1, pixlen, hevcFrame.frameInfo.nWidth, outFile);
+        }
+        // write UV
+        int uvLineSize = hevcFrame.frameInfo.nWidth >> format;
+        for (int h = 0; h < hevcFrame.frameInfo.nHeight / 2; h++) {
+            const jbyte* srcBase2 = data +ylen+ hevcFrame.frameInfo.nUPitch * h;
+            fwrite(srcBase2, pixlen , uvLineSize, outFile);
+        }
+        for (int h = 0; h < hevcFrame.frameInfo.nHeight / 2 ; h++) {
+            const jbyte* srcBase3 = data+ylen +uvlen+ hevcFrame.frameInfo.nVPitch * h;
+            fwrite(srcBase3, pixlen , uvLineSize, outFile);
+        }
+        fflush(outFile);
+        fclose(outFile);
+    } else {
+        ALOGW("WARN: %s is not a valid dir", path);
+    }
+}
+
 
 void saveFrame(JNIEnv* env, jstring jStr, OpenHevc_Frame& hevcFrame) {
     FILE* outFile = nullptr;
@@ -780,6 +816,8 @@ DECODER_FUNC(jint, hevcRenderFrame, jlong jHandle, jobject jSurface,
     const uint64_t yLength = dbdf->f.frameInfo.nYPitch * dbdf->f.frameInfo.nHeight;
     const uint64_t uvLength = dbdf->f.frameInfo.nUPitch * uvHeight;
 
+   // saveFrame(env,data,dbdf->f,yLength,uvLength);
+
     // UV
     const int src_uv_stride = dbdf->f.frameInfo.nUPitch;
     const int dest_uv_stride = (buffer.stride / 2 + 15) & (~15);
@@ -787,9 +825,9 @@ DECODER_FUNC(jint, hevcRenderFrame, jlong jHandle, jobject jSurface,
     const int32_t height =
             fmin((int32_t)(dbdf->f.frameInfo.nHeight + 1) / 2, buffer_uv_height);
     stride = (dbdf->f.frameInfo.nWidth + 1) / 2;
-    src_base = reinterpret_cast<uint8_t*>(data + yLength+uvLength);
+    src_base = reinterpret_cast<uint8_t*>(data + yLength);
     const uint8_t* src_v_base =
-            reinterpret_cast<uint8_t*>(data + yLength);
+            reinterpret_cast<uint8_t*>(data + yLength+uvLength);
     uint8_t* dest_v_base =
             ((uint8_t*)buffer.bits) + buffer.stride * buffer.height;
     dest_base = dest_v_base + buffer_uv_height * dest_uv_stride;
