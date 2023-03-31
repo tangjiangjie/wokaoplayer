@@ -96,171 +96,6 @@ LIBRARY_FUNC(jstring, hevcGetBuildConfig) {
     return env->NewStringUTF(hevc_codec_build_config());
 }
 
-#ifdef __ARM_NEON__
-static int convert_16_to_8_neon(const OpenHevc_Frame* const img, jbyte* const data,
-                                const int32_t uvHeight, const int32_t yLength,
-                                const int32_t uvLength) {
-  if (!(android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_NEON)) return 0;
-  uint32x2_t lcg_val = vdup_n_u32(random());
-  lcg_val = vset_lane_u32(random(), lcg_val, 1);
-  // LCG values recommended in good ol' "Numerical Recipes"
-  const uint32x2_t LCG_MULT = vdup_n_u32(1664525);
-  const uint32x2_t LCG_INCR = vdup_n_u32(1013904223);
-
-  const uint16_t* srcBase =
-      reinterpret_cast<uint16_t*>(img->pvY);
-  uint8_t* dstBase = reinterpret_cast<uint8_t*>(data);
-  // In units of uint16_t, so /2 from raw stride
-  const int srcStride = img->frameInfo.nYPitch / 2;
-  const int dstStride = img->frameInfo.nYPitch;
-
-  for (int y = 0; y < img->frameInfo.nHeight; y++) {
-    const uint16_t* src = srcBase;
-    uint8_t* dst = dstBase;
-
-    // Each read consumes 4 2-byte samples, but to reduce branches and
-    // random steps we unroll to four rounds, so each loop consumes 16
-    // samples.
-    const int imax = img->frameInfo.nWidth & ~15;
-    int i;
-    for (i = 0; i < imax; i += 16) {
-      // Run a round of the RNG.
-      lcg_val = vmla_u32(LCG_INCR, lcg_val, LCG_MULT);
-
-      // The lower two bits of this LCG parameterization are garbage,
-      // leaving streaks on the image. We access the upper bits of each
-      // 16-bit lane by shifting. (We use this both as an 8- and 16-bit
-      // vector, so the choice of which one to keep it as is arbitrary.)
-      uint8x8_t randvec =
-          vreinterpret_u8_u16(vshr_n_u16(vreinterpret_u16_u32(lcg_val), 8));
-
-      // We retrieve the values and shift them so that the bits we'll
-      // shift out (after biasing) are in the upper 8 bits of each 16-bit
-      // lane.
-      uint16x4_t values = vshl_n_u16(vld1_u16(src), 6);
-      src += 4;
-
-      // We add the bias bits in the lower 8 to the shifted values to get
-      // the final values in the upper 8 bits.
-      uint16x4_t added1 = vqadd_u16(values, vreinterpret_u16_u8(randvec));
-
-      // Shifting the randvec bits left by 2 bits, as an 8-bit vector,
-      // should leave us with enough bias to get the needed rounding
-      // operation.
-      randvec = vshl_n_u8(randvec, 2);
-
-      // Retrieve and sum the next 4 pixels.
-      values = vshl_n_u16(vld1_u16(src), 6);
-      src += 4;
-      uint16x4_t added2 = vqadd_u16(values, vreinterpret_u16_u8(randvec));
-
-      // Reinterpret the two added vectors as 8x8, zip them together, and
-      // discard the lower portions.
-      uint8x8_t zipped =
-          vuzp_u8(vreinterpret_u8_u16(added1), vreinterpret_u8_u16(added2))
-              .val[1];
-      vst1_u8(dst, zipped);
-      dst += 8;
-
-      // Run it again with the next two rounds using the remaining
-      // entropy in randvec.
-      randvec = vshl_n_u8(randvec, 2);
-      values = vshl_n_u16(vld1_u16(src), 6);
-      src += 4;
-      added1 = vqadd_u16(values, vreinterpret_u16_u8(randvec));
-      randvec = vshl_n_u8(randvec, 2);
-      values = vshl_n_u16(vld1_u16(src), 6);
-      src += 4;
-      added2 = vqadd_u16(values, vreinterpret_u16_u8(randvec));
-      zipped = vuzp_u8(vreinterpret_u8_u16(added1), vreinterpret_u8_u16(added2))
-                   .val[1];
-      vst1_u8(dst, zipped);
-      dst += 8;
-    }
-
-    uint32_t randval = 0;
-    // For the remaining pixels in each row - usually none, as most
-    // standard sizes are divisible by 32 - convert them "by hand".
-    while (i < img->frameInfo.nWidth) {
-      if (!randval) randval = random();
-      dstBase[i] = (srcBase[i] + (randval & 3)) >> 2;
-      i++;
-      randval >>= 2;
-    }
-
-    srcBase += srcStride;
-    dstBase += dstStride;
-  }
-
-  const uint16_t* srcUBase =
-      reinterpret_cast<uint16_t*>(img->pvY);
-  const uint16_t* srcVBase =
-      reinterpret_cast<uint16_t*>(img->pvV);
-  const int32_t uvWidth = (img->frameInfo.nWidth + 1) / 2;
-  uint8_t* dstUBase = reinterpret_cast<uint8_t*>(data + yLength);
-  uint8_t* dstVBase = reinterpret_cast<uint8_t*>(data + yLength + uvLength);
-  const int srcUVStride = img->frameInfo.nVPitch / 2;
-  const int dstUVStride = img->frameInfo.nVPitch;
-
-  for (int y = 0; y < uvHeight; y++) {
-    const uint16_t* srcU = srcUBase;
-    const uint16_t* srcV = srcVBase;
-    uint8_t* dstU = dstUBase;
-    uint8_t* dstV = dstVBase;
-
-    // As before, each i++ consumes 4 samples (8 bytes). For simplicity we
-    // don't unroll these loops more than we have to, which is 8 samples.
-    const int imax = uvWidth & ~7;
-    int i;
-    for (i = 0; i < imax; i += 8) {
-      lcg_val = vmla_u32(LCG_INCR, lcg_val, LCG_MULT);
-      uint8x8_t randvec =
-          vreinterpret_u8_u16(vshr_n_u16(vreinterpret_u16_u32(lcg_val), 8));
-      uint16x4_t uVal1 = vqadd_u16(vshl_n_u16(vld1_u16(srcU), 6),
-                                   vreinterpret_u16_u8(randvec));
-      srcU += 4;
-      randvec = vshl_n_u8(randvec, 2);
-      uint16x4_t vVal1 = vqadd_u16(vshl_n_u16(vld1_u16(srcV), 6),
-                                   vreinterpret_u16_u8(randvec));
-      srcV += 4;
-      randvec = vshl_n_u8(randvec, 2);
-      uint16x4_t uVal2 = vqadd_u16(vshl_n_u16(vld1_u16(srcU), 6),
-                                   vreinterpret_u16_u8(randvec));
-      srcU += 4;
-      randvec = vshl_n_u8(randvec, 2);
-      uint16x4_t vVal2 = vqadd_u16(vshl_n_u16(vld1_u16(srcV), 6),
-                                   vreinterpret_u16_u8(randvec));
-      srcV += 4;
-      vst1_u8(dstU,
-              vuzp_u8(vreinterpret_u8_u16(uVal1), vreinterpret_u8_u16(uVal2))
-                  .val[1]);
-      dstU += 8;
-      vst1_u8(dstV,
-              vuzp_u8(vreinterpret_u8_u16(vVal1), vreinterpret_u8_u16(vVal2))
-                  .val[1]);
-      dstV += 8;
-    }
-
-    uint32_t randval = 0;
-    while (i < uvWidth) {
-      if (!randval) randval = random();
-      dstUBase[i] = (srcUBase[i] + (randval & 3)) >> 2;
-      randval >>= 2;
-      dstVBase[i] = (srcVBase[i] + (randval & 3)) >> 2;
-      randval >>= 2;
-      i++;
-    }
-
-    srcUBase += srcUVStride;
-    srcVBase += srcUVStride;
-    dstUBase += dstUVStride;
-    dstVBase += dstUVStride;
-  }
-
-  return 1;
-}
-#endif
-
 static void convert_16_to_8_standard(const OpenHevc_Frame* const img,
                                      jbyte* const data, const int32_t uvHeight,
                                      const int32_t yLength,
@@ -311,10 +146,7 @@ static const int DECODE_DRM_ERROR = -2;
 static const int DECODE_GET_FRAME_ERROR = -3;//把AVFrame的数据拷贝到OutputBuffer出错
 
 // JNI references for HevcOutputBuffer class.
-static jmethodID initForRgbFrame;
-static jmethodID initForYuvFrame;
-static jfieldID dataField;
-static jfieldID timeUsField;
+
 
 
 struct dbdframe{
@@ -325,6 +157,10 @@ struct dbdframe{
 
 struct dibudong {
     jfieldID decoder_private_field;
+    jmethodID initForRgbFrame;
+    jmethodID initForYuvFrame;
+    jfieldID dataField;
+    jfieldID timeUsField;
     dibudong(OpenHevc_Handle d):decoder(d) {
         buf_init();
     }
@@ -375,6 +211,7 @@ struct dibudong {
                 if(frame[curidx].id==0){
                     frame[curidx].id=FRAME_BASEID+curidx;
                     ret=&frame[curidx];
+                    bitmap32|=1<<curidx;
                     curidx++;
                     break;
                 }
@@ -391,6 +228,8 @@ struct dibudong {
 
     void releaseframe(dbdframe* f){
         pthread_mutex_lock(&mutex);
+        int idx=frame[curidx].id-FRAME_BASEID;
+        bitmap32&=~(1<<idx);
         memset(f,0,sizeof(dbdframe));
         pthread_mutex_unlock(&mutex);
     }
@@ -447,13 +286,13 @@ DECODER_FUNC(jlong, hevcInit, jobject extraData, jint len) {
                 //"com/google/android/exoplayer2/decoder/VideoDecoderOutputBuffer");
         ctx->decoder_private_field =
                 env->GetFieldID(outputBufferClass, "decoderPrivate", "I");
-        initForYuvFrame = env->GetMethodID(outputBufferClass, "initForYuvFrame",
+        ctx->initForYuvFrame = env->GetMethodID(outputBufferClass, "initForYuvFrame",
                                            "(IIIII)Z");
-        initForRgbFrame = env->GetMethodID(outputBufferClass, "initForRgbFrame",
+        ctx->initForRgbFrame = env->GetMethodID(outputBufferClass, "initForRgbFrame",
                                            "(III)I");
-        dataField = env->GetFieldID(outputBufferClass, "data",
+        ctx->dataField = env->GetFieldID(outputBufferClass, "data",
                                     "Ljava/nio/ByteBuffer;");
-        timeUsField = env->GetFieldID(outputBufferClass, "timeUs", "J");
+        ctx->timeUsField = env->GetFieldID(outputBufferClass, "timeUs", "J");
     }
 
 LABEL_RETURN:
@@ -469,87 +308,8 @@ DECODER_FUNC(jlong, hevcClose, jlong jHandle) {
     return 0;
 }
 
-int getRGBFrame(JNIEnv* env, jobject jOutputBuffer, OpenHevc_Frame& hevcFrame) {
-    ALOGI("getRGBFrame %d", hevcFrame.frameInfo.chromat_format);
-    if (YUV420 == hevcFrame.frameInfo.chromat_format) {
-        jint bufferSize = env->CallIntMethod(jOutputBuffer, initForRgbFrame,
-                                                     hevcFrame.frameInfo.nWidth,
-                                                     hevcFrame.frameInfo.nHeight,
-                                                     PIXFMT_RGB565);
-        if (env->ExceptionCheck() || bufferSize < 0) {
-            ALOGE("ERROR: %s rgbmode failed, bufferSize %d", __func__, bufferSize);
-            return DECODE_GET_FRAME_ERROR;
-        }
 
-        // get pointer to the data buffer.
-        const jobject dataObject = env->GetObjectField(jOutputBuffer, dataField);
-        uint8_t *const dst = reinterpret_cast<uint8_t *>(env->GetDirectBufferAddress(dataObject));
-
-        libyuv::I420ToRGB565(hevcFrame.pvY, hevcFrame.frameInfo.nYPitch,
-                             hevcFrame.pvU, hevcFrame.frameInfo.nUPitch,
-                             hevcFrame.pvV, hevcFrame.frameInfo.nVPitch,
-                             dst, hevcFrame.frameInfo.nWidth * 2,
-                             hevcFrame.frameInfo.nWidth, hevcFrame.frameInfo.nHeight);
-    } else if(YUV422 == hevcFrame.frameInfo.chromat_format) {
-
-        jint bufferSize = env->CallIntMethod(jOutputBuffer, initForRgbFrame,
-                                                 hevcFrame.frameInfo.nWidth,
-                                                 hevcFrame.frameInfo.nHeight,
-                                                 PIXFMT_RGB565);
-        if (env->ExceptionCheck() || bufferSize < 0) {
-            ALOGE("ERROR: %s rgbmode failed, bufferSize %d", __func__, bufferSize);
-            return DECODE_GET_FRAME_ERROR;
-        }
-
-        // get pointer to the data buffer.
-        const jobject dataObject = env->GetObjectField(jOutputBuffer, dataField);
-        uint8_t *const dst = reinterpret_cast<uint8_t *>(env->GetDirectBufferAddress(dataObject));
-
-        libyuv::I422ToRGB565(hevcFrame.pvY, hevcFrame.frameInfo.nYPitch,
-                             hevcFrame.pvU, hevcFrame.frameInfo.nUPitch,
-                             hevcFrame.pvV, hevcFrame.frameInfo.nVPitch,
-                             dst, hevcFrame.frameInfo.nWidth * 2,
-                             hevcFrame.frameInfo.nWidth, hevcFrame.frameInfo.nHeight);
-    } else if(YUV444 == hevcFrame.frameInfo.chromat_format) {
-
-        jint bufferSize = env->CallIntMethod(jOutputBuffer, initForRgbFrame,
-                                                 hevcFrame.frameInfo.nWidth,
-                                                 hevcFrame.frameInfo.nHeight,
-                                                 PIXFMT_ARGB8888);
-        if (env->ExceptionCheck() || bufferSize < 0) {
-            ALOGE("ERROR: %s rgbmode failed, bufferSize %d", __func__, bufferSize);
-            return DECODE_GET_FRAME_ERROR;
-        }
-
-        // get pointer to the data buffer.
-        const jobject dataObject = env->GetObjectField(jOutputBuffer, dataField);
-        uint8_t *const dst = reinterpret_cast<uint8_t *>(env->GetDirectBufferAddress(dataObject));
-
-        /**
-         * Bitmap.Config.ARGB8888像素的布局从低位到高位是：R G B A
-         * 而I444ToARGB像素的内存布局从低位到高位是：B G R A
-         * 所以要把libyuv转换过后的每个像素的第0个字节和第2个字节交换才能显示在Bitmap上
-         * 这里是可以优化的，如SIMD，或者从libyuv源码上改成直接输出RGBA，等真有需求的时候再改
-         */
-        libyuv::I444ToARGB(hevcFrame.pvY, hevcFrame.frameInfo.nYPitch,
-                           hevcFrame.pvU, hevcFrame.frameInfo.nUPitch,
-                           hevcFrame.pvV, hevcFrame.frameInfo.nVPitch,
-                           dst, hevcFrame.frameInfo.nWidth * 4,
-                           hevcFrame.frameInfo.nWidth, hevcFrame.frameInfo.nHeight);
-        for(int i = 0; i < bufferSize; i+=4) {
-            uint8_t tmp = dst[i+2];
-            dst[i+2] = dst[i+0];
-            dst[i+0] = tmp;
-        }
-    } else {
-        ALOGE("ERROR: %s rgbmode failed, unrecognized chroma format %d", __func__, hevcFrame.frameInfo.chromat_format);
-        return DECODE_GET_FRAME_ERROR;
-    }
-
-    return DECODE_NO_ERROR;
-}
-
-int getYUVFrame(JNIEnv* env, jobject jOutputBuffer, OpenHevc_Frame& hevcFrame) {
+int getYUVFrame(JNIEnv* env,dibudong* ctx, jobject jOutputBuffer, OpenHevc_Frame& hevcFrame) {
     ALOGI("getYUVFrame %d", hevcFrame.frameInfo.chromat_format);
     // yuv
     const int kColorspaceUnknown = 0;
@@ -576,14 +336,14 @@ int getYUVFrame(JNIEnv* env, jobject jOutputBuffer, OpenHevc_Frame& hevcFrame) {
 
     // resize buffer if required.
     jboolean initResult = env->CallBooleanMethod(
-            jOutputBuffer, initForYuvFrame, hevcFrame.frameInfo.nWidth, hevcFrame.frameInfo.nHeight,
+            jOutputBuffer, ctx->initForYuvFrame, hevcFrame.frameInfo.nWidth, hevcFrame.frameInfo.nHeight,
             hevcFrame.frameInfo.nYPitch, hevcFrame.frameInfo.nUPitch, colorspace);
     if (env->ExceptionCheck() || !initResult) {
         ALOGE("ERROR: %s yuvmode failed", __func__);
         return DECODE_GET_FRAME_ERROR;
     }
     // get pointer to the data buffer.
-    const jobject dataObject = env->GetObjectField(jOutputBuffer, dataField);
+    const jobject dataObject = env->GetObjectField(jOutputBuffer, ctx->dataField);
     jbyte* const data =
             reinterpret_cast<jbyte*>(env->GetDirectBufferAddress(dataObject));
 
@@ -745,11 +505,11 @@ DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t
     dbgframeinfo(dbd->f.frameInfo);
 
     //设置OutputBuffer的pts
-    env->SetLongField(jOutputBuffer, timeUsField, dbd->f.frameInfo.pts);
+    env->SetLongField(jOutputBuffer, ctx->timeUsField, dbd->f.frameInfo.pts);
     env->SetIntField(jOutputBuffer, ctx->decoder_private_field, dbd->id);
-    got_pic = getYUVFrame(env, jOutputBuffer, dbd->f);
+    got_pic = getYUVFrame(env, ctx,jOutputBuffer, dbd->f);
 
-    const jobject dataObject = env->GetObjectField(jOutputBuffer, dataField);
+    const jobject dataObject = env->GetObjectField(jOutputBuffer, ctx->dataField);
     //jbyte* const data =
      dbd->pic=reinterpret_cast<jbyte*>(env->GetDirectBufferAddress(dataObject));
 
@@ -796,7 +556,7 @@ DECODER_FUNC(jint, hevcRenderFrame, jlong jHandle, jobject jSurface,
     if (buffer.bits == NULL || result) {
         return -1;
     }
-    const jobject dataObject = env->GetObjectField(jOutputBuffer, dataField);
+    const jobject dataObject = env->GetObjectField(jOutputBuffer, ctx->dataField);
     jbyte* const data =reinterpret_cast<jbyte*>(env->GetDirectBufferAddress(dataObject));
 
     ALOGD("hevcRenderFrame %p %p",data,dbdf->pic);
