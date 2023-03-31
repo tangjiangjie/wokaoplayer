@@ -67,7 +67,7 @@ public class video {
         MediaItem mediaItem = new MediaItem.Builder().setMediaId(firstname).setUri(videoUrl).build();
 
         player.setMediaSource(mi2ms(mediaItem));
-
+        player.setPlaybackSpeed(0.2f);
         // player.setRepeatMode()
 
         player.prepare();
