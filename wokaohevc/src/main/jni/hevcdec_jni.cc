@@ -105,7 +105,7 @@ static void convert_16_to_8_standard(const OpenHevc_Frame* const img,
     for (int y = 0; y < img->frameInfo.nHeight; y++) {
         const uint16_t* srcBase = reinterpret_cast<uint16_t*>(
                 img->pvY + img->frameInfo.nYPitch * y);
-        int8_t* destBase = data + img->frameInfo.nYPitch * y;
+        int8_t* destBase = data + img->frameInfo.nWidth * y;
         for (int x = 0; x < img->frameInfo.nWidth; x++) {
             // Lightweight dither. Carryover the remainder of each 10->8 bit
             // conversion to the next pixel.
@@ -123,9 +123,9 @@ static void convert_16_to_8_standard(const OpenHevc_Frame* const img,
                 img->pvU + img->frameInfo.nUPitch * y);
         const uint16_t* srcVBase = reinterpret_cast<uint16_t*>(
                 img->pvV + img->frameInfo.nVPitch * y);
-        int8_t* destUBase = data + yLength + img->frameInfo.nUPitch * y;
+        int8_t* destUBase = data + img->frameInfo.nWidth*img->frameInfo.nHeight + img->frameInfo.nWidth/2 * y;
         int8_t* destVBase =
-                data + yLength + uvLength + img->frameInfo.nVPitch * y;
+                data + img->frameInfo.nWidth*img->frameInfo.nHeight + uvWidth*uvHeight + img->frameInfo.nWidth/2 * y;
         for (int x = 0; x < uvWidth; x++) {
             // Lightweight dither. Carryover the remainder of each 10->8 bit
             // conversion to the next pixel.
@@ -337,7 +337,7 @@ int getYUVFrame(JNIEnv* env,dibudong* ctx, jobject jOutputBuffer, OpenHevc_Frame
     // resize buffer if required.
     jboolean initResult = env->CallBooleanMethod(
             jOutputBuffer, ctx->initForYuvFrame, hevcFrame.frameInfo.nWidth, hevcFrame.frameInfo.nHeight,
-            hevcFrame.frameInfo.nYPitch, hevcFrame.frameInfo.nUPitch, colorspace);
+            hevcFrame.frameInfo.nWidth, hevcFrame.frameInfo.nWidth/2, colorspace);
     if (env->ExceptionCheck() || !initResult) {
         ALOGE("ERROR: %s yuvmode failed", __func__);
         return DECODE_GET_FRAME_ERROR;
@@ -351,6 +351,7 @@ int getYUVFrame(JNIEnv* env,dibudong* ctx, jobject jOutputBuffer, OpenHevc_Frame
     const uint64_t yLength = hevcFrame.frameInfo.nYPitch * hevcFrame.frameInfo.nHeight;
     const uint64_t uvLength = hevcFrame.frameInfo.nUPitch * uvHeight;
 
+    int ret=DECODE_NO_ERROR;
     if (hevcFrame.frameInfo.chromat_format == YUV420) {  // HBD planar 420.
         // Note: The stride for BT2020 is twice of what we use so this is wasting
         // memory. The long term goal however is to upload half-float/short so
@@ -368,10 +369,11 @@ int getYUVFrame(JNIEnv* env,dibudong* ctx, jobject jOutputBuffer, OpenHevc_Frame
 //        memcpy(data, hevcFrame.pvY, yLength);
 //        memcpy(data + yLength, hevcFrame.pvU, uvLength);
 //        memcpy(data + yLength + uvLength, hevcFrame.pvV, uvLength);
-        return DECODE_GET_FRAME_ERROR;
+        ret=DECODE_GET_FRAME_ERROR;
     }
+    env->DeleteLocalRef(dataObject);
 
-    return DECODE_NO_ERROR;
+    return ret;
 }
 
 void saveFrame(JNIEnv* env, jbyte* data,OpenHevc_Frame& hevcFrame,uint64_t ylen,uint64_t uvlen) {
@@ -507,11 +509,14 @@ DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t
     //设置OutputBuffer的pts
     env->SetLongField(jOutputBuffer, ctx->timeUsField, dbd->f.frameInfo.pts);
     env->SetIntField(jOutputBuffer, ctx->decoder_private_field, dbd->id);
+
     got_pic = getYUVFrame(env, ctx,jOutputBuffer, dbd->f);
 
-    const jobject dataObject = env->GetObjectField(jOutputBuffer, ctx->dataField);
+    //const jobject dataObject = env->GetObjectField(jOutputBuffer, ctx->dataField);
     //jbyte* const data =
-     dbd->pic=reinterpret_cast<jbyte*>(env->GetDirectBufferAddress(dataObject));
+    // dbd->pic=reinterpret_cast<jbyte*>(env->GetDirectBufferAddress(dataObject));
+
+    //env->DeleteLocalRef(dataObject);
 
     //for debug, to save frame to file
     if(jStr != nullptr) {
@@ -533,6 +538,7 @@ DECODER_FUNC(void, hevcReleaseFrame, jlong jHandle, jobject jOutputBuffer) {
 
 DECODER_FUNC(jint, hevcRenderFrame, jlong jHandle, jobject jSurface,
              jobject jOutputBuffer) {
+
 
     dibudong* ctx=(dibudong*)jHandle;
     const int id = env->GetIntField(jOutputBuffer, ctx->decoder_private_field);
@@ -562,7 +568,7 @@ DECODER_FUNC(jint, hevcRenderFrame, jlong jHandle, jobject jSurface,
     ALOGD("hevcRenderFrame %p %p",data,dbdf->pic);
 
     // Y
-    const size_t src_y_stride = dbdf->f.frameInfo.nYPitch;
+    const size_t src_y_stride = dbdf->f.frameInfo.nWidth;
     int stride = dbdf->f.frameInfo.nWidth;
     const uint8_t* src_base =
             reinterpret_cast<uint8_t*>(data);
@@ -573,13 +579,13 @@ DECODER_FUNC(jint, hevcRenderFrame, jlong jHandle, jobject jSurface,
         dest_base += buffer.stride;
     }
     const int32_t uvHeight = (dbdf->f.frameInfo.nHeight + 1) / 2;
-    const uint64_t yLength = dbdf->f.frameInfo.nYPitch * dbdf->f.frameInfo.nHeight;
-    const uint64_t uvLength = dbdf->f.frameInfo.nUPitch * uvHeight;
+    const uint64_t yLength = dbdf->f.frameInfo.nWidth * dbdf->f.frameInfo.nHeight;
+    const uint64_t uvLength = dbdf->f.frameInfo.nWidth/2 * uvHeight;
 
    // saveFrame(env,data,dbdf->f,yLength,uvLength);
 
     // UV
-    const int src_uv_stride = dbdf->f.frameInfo.nUPitch;
+    const int src_uv_stride = dbdf->f.frameInfo.nWidth/2;
     const int dest_uv_stride = (buffer.stride / 2 + 15) & (~15);
     const int32_t buffer_uv_height = (buffer.height + 1) / 2;
     const int32_t height =
@@ -599,6 +605,9 @@ DECODER_FUNC(jint, hevcRenderFrame, jlong jHandle, jobject jSurface,
         dest_base += dest_uv_stride;
         dest_v_base += dest_uv_stride;
     }
+
+
+    env->DeleteLocalRef(dataObject);
 
     return ANativeWindow_unlockAndPost(ctx->native_window);
 }
