@@ -428,7 +428,7 @@ DECODER_FUNC(jlong, hevcInit, jobject extraData, jint len) {
     OpenHevc_Handle ohevc = nullptr;
     dibudong* ctx=0;
     int mode = 1;
-    int nb_pthreads = (android_getCpuCount() + 1) / 2;
+    int nb_pthreads = (android_getCpuCount() + 1)*7 / 8;
     int layer_id = 0;
 
     uint8_t * data = nullptr;
