@@ -9,6 +9,7 @@
 #include <cstring>
 #include <sys/stat.h>.
 #include <pthread.h>
+#include <sys/time.h>
 
 #include "libyuv.h"
 #include "log.h"
@@ -96,10 +97,180 @@ LIBRARY_FUNC(jstring, hevcGetBuildConfig) {
     return env->NewStringUTF(hevc_codec_build_config());
 }
 
+#ifdef __ARM_NEON__
+static int convert_16_to_8_neon(const OpenHevc_Frame* const img,
+                                jbyte* const data, const int32_t uvHeight)
+//                                const vpx_image_t* const img, jbyte* const data,
+//                                const int32_t uvHeight, const int32_t yLength,
+//                                const int32_t uvLength)
+                                {
+    if (!(android_getCpuFeatures() & ANDROID_CPU_ARM_FEATURE_NEON)) return 0;
+    uint32x2_t lcg_val = vdup_n_u32(random());
+    lcg_val = vset_lane_u32(random(), lcg_val, 1);
+    // LCG values recommended in good ol' "Numerical Recipes"
+    const uint32x2_t LCG_MULT = vdup_n_u32(1664525);
+    const uint32x2_t LCG_INCR = vdup_n_u32(1013904223);
+
+    const uint16_t* srcBase =
+            reinterpret_cast<uint16_t*>(img->pvY);
+    uint8_t* dstBase = reinterpret_cast<uint8_t*>(data);
+    // In units of uint16_t, so /2 from raw stride
+    const int srcStride = img->frameInfo.nYPitch/2;
+    const int dstStride = img->frameInfo.nWidth;
+
+    for (int y = 0; y < img->frameInfo.nHeight; y++) {
+        const uint16_t* src = srcBase;
+        uint8_t* dst = dstBase;
+
+        // Each read consumes 4 2-byte samples, but to reduce branches and
+        // random steps we unroll to four rounds, so each loop consumes 16
+        // samples.
+        const int imax = img->frameInfo.nWidth & ~15;
+        int i;
+        for (i = 0; i < imax; i += 16) {
+            // Run a round of the RNG.
+            lcg_val = vmla_u32(LCG_INCR, lcg_val, LCG_MULT);
+
+            // The lower two bits of this LCG parameterization are garbage,
+            // leaving streaks on the image. We access the upper bits of each
+            // 16-bit lane by shifting. (We use this both as an 8- and 16-bit
+            // vector, so the choice of which one to keep it as is arbitrary.)
+            uint8x8_t randvec =
+                    vreinterpret_u8_u16(vshr_n_u16(vreinterpret_u16_u32(lcg_val), 8));
+
+            // We retrieve the values and shift them so that the bits we'll
+            // shift out (after biasing) are in the upper 8 bits of each 16-bit
+            // lane.
+            uint16x4_t values = vshl_n_u16(vld1_u16(src), 6);
+            src += 4;
+
+            // We add the bias bits in the lower 8 to the shifted values to get
+            // the final values in the upper 8 bits.
+            uint16x4_t added1 = vqadd_u16(values, vreinterpret_u16_u8(randvec));
+
+            // Shifting the randvec bits left by 2 bits, as an 8-bit vector,
+            // should leave us with enough bias to get the needed rounding
+            // operation.
+            randvec = vshl_n_u8(randvec, 2);
+
+            // Retrieve and sum the next 4 pixels.
+            values = vshl_n_u16(vld1_u16(src), 6);
+            src += 4;
+            uint16x4_t added2 = vqadd_u16(values, vreinterpret_u16_u8(randvec));
+
+            // Reinterpret the two added vectors as 8x8, zip them together, and
+            // discard the lower portions.
+            uint8x8_t zipped =
+                    vuzp_u8(vreinterpret_u8_u16(added1), vreinterpret_u8_u16(added2))
+                            .val[1];
+            vst1_u8(dst, zipped);
+            dst += 8;
+
+            // Run it again with the next two rounds using the remaining
+            // entropy in randvec.
+            randvec = vshl_n_u8(randvec, 2);
+            values = vshl_n_u16(vld1_u16(src), 6);
+            src += 4;
+            added1 = vqadd_u16(values, vreinterpret_u16_u8(randvec));
+            randvec = vshl_n_u8(randvec, 2);
+            values = vshl_n_u16(vld1_u16(src), 6);
+            src += 4;
+            added2 = vqadd_u16(values, vreinterpret_u16_u8(randvec));
+            zipped = vuzp_u8(vreinterpret_u8_u16(added1), vreinterpret_u8_u16(added2))
+                    .val[1];
+            vst1_u8(dst, zipped);
+            dst += 8;
+        }
+
+        uint32_t randval = 0;
+        // For the remaining pixels in each row - usually none, as most
+        // standard sizes are divisible by 32 - convert them "by hand".
+        while (i < img->frameInfo.nWidth) {
+            if (!randval) randval = random();
+            dstBase[i] = (srcBase[i] + (randval & 3)) >> 2;
+            i++;
+            randval >>= 2;
+        }
+
+        srcBase += srcStride;
+        dstBase += dstStride;
+    }
+
+    const uint64_t yLength = img->frameInfo.nWidth * img->frameInfo.nHeight;
+    const uint64_t uvLength = img->frameInfo.nWidth/2 * uvHeight;
+
+    const uint16_t* srcUBase =
+            reinterpret_cast<uint16_t*>(img->pvU);
+    const uint16_t* srcVBase =
+            reinterpret_cast<uint16_t*>(img->pvV);
+    const int32_t uvWidth = (img->frameInfo.nWidth + 1) / 2;
+    uint8_t* dstUBase = reinterpret_cast<uint8_t*>(data + yLength);
+    uint8_t* dstVBase = reinterpret_cast<uint8_t*>(data + yLength + uvLength);
+    const int srcUVStride = img->frameInfo.nUPitch / 2;
+    const int dstUVStride = img->frameInfo.nWidth/2;
+
+    for (int y = 0; y < uvHeight; y++) {
+        const uint16_t* srcU = srcUBase;
+        const uint16_t* srcV = srcVBase;
+        uint8_t* dstU = dstUBase;
+        uint8_t* dstV = dstVBase;
+
+        // As before, each i++ consumes 4 samples (8 bytes). For simplicity we
+        // don't unroll these loops more than we have to, which is 8 samples.
+        const int imax = uvWidth & ~7;
+        int i;
+        for (i = 0; i < imax; i += 8) {
+            lcg_val = vmla_u32(LCG_INCR, lcg_val, LCG_MULT);
+            uint8x8_t randvec =
+                    vreinterpret_u8_u16(vshr_n_u16(vreinterpret_u16_u32(lcg_val), 8));
+            uint16x4_t uVal1 = vqadd_u16(vshl_n_u16(vld1_u16(srcU), 6),
+                                         vreinterpret_u16_u8(randvec));
+            srcU += 4;
+            randvec = vshl_n_u8(randvec, 2);
+            uint16x4_t vVal1 = vqadd_u16(vshl_n_u16(vld1_u16(srcV), 6),
+                                         vreinterpret_u16_u8(randvec));
+            srcV += 4;
+            randvec = vshl_n_u8(randvec, 2);
+            uint16x4_t uVal2 = vqadd_u16(vshl_n_u16(vld1_u16(srcU), 6),
+                                         vreinterpret_u16_u8(randvec));
+            srcU += 4;
+            randvec = vshl_n_u8(randvec, 2);
+            uint16x4_t vVal2 = vqadd_u16(vshl_n_u16(vld1_u16(srcV), 6),
+                                         vreinterpret_u16_u8(randvec));
+            srcV += 4;
+            vst1_u8(dstU,
+                    vuzp_u8(vreinterpret_u8_u16(uVal1), vreinterpret_u8_u16(uVal2))
+                            .val[1]);
+            dstU += 8;
+            vst1_u8(dstV,
+                    vuzp_u8(vreinterpret_u8_u16(vVal1), vreinterpret_u8_u16(vVal2))
+                            .val[1]);
+            dstV += 8;
+        }
+
+        uint32_t randval = 0;
+        while (i < uvWidth) {
+            if (!randval) randval = random();
+            dstUBase[i] = (srcUBase[i] + (randval & 3)) >> 2;
+            randval >>= 2;
+            dstVBase[i] = (srcVBase[i] + (randval & 3)) >> 2;
+            randval >>= 2;
+            i++;
+        }
+
+        srcUBase += srcUVStride;
+        srcVBase += srcUVStride;
+        dstUBase += dstUVStride;
+        dstVBase += dstUVStride;
+    }
+
+    return 1;
+}
+
+#endif  // __ARM_NEON__
+
 static void convert_16_to_8_standard(const OpenHevc_Frame* const img,
-                                     jbyte* const data, const int32_t uvHeight,
-                                     const int32_t yLength,
-                                     const int32_t uvLength) {
+                                     jbyte* const data, const int32_t uvHeight){
     // Y
     int sampleY = 0;
     for (int y = 0; y < img->frameInfo.nHeight; y++) {
@@ -185,6 +356,19 @@ struct dibudong {
     jobject surface = NULL;
     int width = 0;
     int height = 0;
+
+    //profile time
+    timeval profile_s;
+    void dbg_s(){
+        gettimeofday(&profile_s,0);
+    }
+    int dbg_e(){
+        timeval profile_e;
+        gettimeofday(&profile_e,0);
+        timeval res;
+        timersub(&profile_e,&profile_s,&res);
+        return res.tv_sec*1000*1000+res.tv_usec;
+    }
 
     //buffer manager
 #define MAX_FRAMES      32
@@ -348,8 +532,6 @@ int getYUVFrame(JNIEnv* env,dibudong* ctx, jobject jOutputBuffer, OpenHevc_Frame
             reinterpret_cast<jbyte*>(env->GetDirectBufferAddress(dataObject));
 
     const int32_t uvHeight = (hevcFrame.frameInfo.nHeight + 1) / 2;
-    const uint64_t yLength = hevcFrame.frameInfo.nYPitch * hevcFrame.frameInfo.nHeight;
-    const uint64_t uvLength = hevcFrame.frameInfo.nUPitch * uvHeight;
 
     int ret=DECODE_NO_ERROR;
     if (hevcFrame.frameInfo.chromat_format == YUV420) {  // HBD planar 420.
@@ -357,12 +539,16 @@ int getYUVFrame(JNIEnv* env,dibudong* ctx, jobject jOutputBuffer, OpenHevc_Frame
         // memory. The long term goal however is to upload half-float/short so
         // it's not important to optimize the stride at this time.
         int converted = 0;
+        ctx->dbg_s();
 #ifdef __ARM_NEON__
-       // converted = convert_16_to_8_neon(&hevcFrame, data, uvHeight, yLength, uvLength);
+       converted = convert_16_to_8_neon(&hevcFrame, data, uvHeight);
 #endif  // __ARM_NEON__
         if (!converted) {
-            convert_16_to_8_standard(&hevcFrame, data, uvHeight, yLength, uvLength);
+
+           // convert_16_to_8_standard(&hevcFrame, data, uvHeight);
+
         }
+        ALOGW("convert_16_to_8_standard  used %d",ctx->dbg_e());
     } else {
         // todo to support other formats
         ALOGW("WARN: %s unrecognized pixfmt %d", __func__ ,hevcFrame.frameInfo.chromat_format);
@@ -483,6 +669,9 @@ DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t
 
     //Zero if no frame could be decompressed, otherwise, it is nonzero.
     //-1 indicates error occurred
+    ctx->dbg_s();
+
+
     got_pic = libOpenHevcDecode(ohevc, buffer, len, pts, flush);
     ALOGD("DEBUG: %d frame decoded got_pic %d ", info.NbFrame, got_pic);
     info.NbFrame++;
@@ -490,6 +679,8 @@ DECODER_FUNC(jint, hevcDecode, jlong jHandle, jobject encoded, jint len, int64_t
         ALOGE("ERROR: hevcDecode failed, status= %d", got_pic);
         return DECODE_ERROR;
     }
+
+    ALOGW("libOpenHevcDecode  used %d",ctx->dbg_e());
 
     if(got_pic == 0) {
         ALOGD("[%s] decode only frame", __func__);
