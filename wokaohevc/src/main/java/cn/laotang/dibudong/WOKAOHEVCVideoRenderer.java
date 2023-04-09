@@ -115,5 +115,10 @@ public class WOKAOHEVCVideoRenderer extends DecoderVideoRenderer {
     public static String test() {
         return TAG;
     }
+    protected boolean shouldForceRenderOutputBuffer(long earlyUs, long elapsedSinceLastRenderUs) {
+       // Log.e("wokao ", "shouldForceRenderOutputBuffer");
+        return true;
+    }
+
 
 }
