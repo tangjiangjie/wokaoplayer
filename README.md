@@ -16,6 +16,10 @@ decode name díbúdòng
 ## todo parallel decode
 ## todo add opencl decode 
 
+20230528
+## 最近沉迷于炒股,对优化毫无兴趣,这个项目要黄
+## i'm sorry díbúdòng
+
 # Thanks
 [exoplayer2-hevc-extension](https://github.com/michalliu/exoplayer2-hevc-extension)
 [The OpenHEVC Project](https://github.com/OpenHEVC/openHEVC)
